@@ -1,0 +1,18 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © waldoibarra
+
+//@version=6
+indicator("ATR In Ticks", shorttitle = "ATR Ticks")
+
+// ————— Inputs
+int barsLength = input.int(14, title = "Length (Bars/Periods)", minval = 1)
+float atrMultiplier = input.float(1.0, title = "Multiplier", minval=0.1, step = 0.1)
+bool shouldDisplayInTicks = input.bool(true, title = "Display in ticks (instead of points)")
+
+// ————— Calculations
+float atrInPoints = ta.atr(barsLength)
+float atrInTicks = math.round_to_mintick(atrInPoints / syminfo.mintick)
+float multipliedAtr = shouldDisplayInTicks ? math.round(atrInTicks * atrMultiplier) : atrInPoints * atrMultiplier
+
+// ————— Visuals
+plot(multipliedAtr, title = "ATR Value", color = color.new(#b71c1c, 0))
