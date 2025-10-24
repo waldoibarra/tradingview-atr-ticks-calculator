@@ -4,15 +4,68 @@
 //@version=6
 indicator("ATR In Ticks", shorttitle = "ATR Ticks")
 
+// ————— Constants
+const bool DEFAULT_DISPLAY_IN_TICKS = true
+
+const int DEFAULT_BARS_LENGTH = 14
+
+const float DEFAULT_ATR_MULTIPLIER  = 1.0
+
+const color RED = #b71c1c
+
+const string MAT_RMA = "RMA"
+const string MAT_SMA = "SMA"
+const string MAT_EMA = "EMA"
+const string MAT_WMA = "WMA"
+const string MAT_DEFAULT = MAT_RMA
+
+const string CALCULATION_GROUP_NAME = "CALCULATION"
+
+const string TT_MTF = "Multi-timeframe analysis (MTF); view the same indicator on a higher timeframe than the chart's to see the price action within a broader, long-term perspective."
+
 // ————— Inputs
-int barsLength = input.int(14, title = "Length (Bars/Periods)", minval = 1)
-float atrMultiplier = input.float(1.0, title = "Multiplier", minval=0.1, step = 0.1)
-bool shouldDisplayInTicks = input.bool(true, title = "Display in ticks (instead of points)")
+int barsLength = input.int(DEFAULT_BARS_LENGTH, title = "Length (Bars/Periods)", minval = 1)
+string movingAverateType = input.string(MAT_DEFAULT,
+  title = "Smoothing",
+  options = [MAT_RMA, MAT_SMA, MAT_EMA, MAT_WMA])
+float atrMultiplier = input.float(DEFAULT_ATR_MULTIPLIER, title = "Multiplier", minval = 0.1, step = 0.1)
+bool shouldDisplayInTicks = input.bool(DEFAULT_DISPLAY_IN_TICKS, title = "Display in ticks (instead of points)")
+string atrTimeframe = input.timeframe("", "Timeframe", group = CALCULATION_GROUP_NAME, tooltip = TT_MTF)
+bool waitForCloses = input.bool(true, "Wait for timeframe closes", group = CALCULATION_GROUP_NAME)
+
+// ————— Functions
+// @function                    Computes the selected moving average smoothed value.
+// @param trueRangeOnTimeFrame  The input true range series on a specific timeframe.
+// @param movingAverateLength   The lookback period (length) for the smoothing calculation.
+// @param movingAverateType     The desired moving average type (e.g., "RMA", "EMA").
+// @returns                     The smoothed price value (a series).
+smooth(float trueRangeOnTimeFrame, int movingAverateLength, string movingAverateType) =>
+    // Calculate all four series once outside the switch block for consistency and stability.
+    float rma = ta.rma(trueRangeOnTimeFrame, movingAverateLength)
+    float sma = ta.sma(trueRangeOnTimeFrame, movingAverateLength)
+    float ema = ta.ema(trueRangeOnTimeFrame, movingAverateLength)
+    float wma = ta.wma(trueRangeOnTimeFrame, movingAverateLength)
+
+    float movingAverage = switch movingAverateType
+        MAT_RMA => rma
+        MAT_SMA => sma
+        MAT_EMA => ema
+        MAT_WMA => wma
+        =>
+            runtime.error("No matching moving average type found.")
+            float(na)
+
+    movingAverage
 
 // ————— Calculations
-float atrInPoints = ta.atr(barsLength)
+float trueRange = ta.tr(true)
+// FIXME: Calculating ATR on HTFs seems to be wrong somewhere, debug this.
+float trueRangeOnTimeFrame = request.security(syminfo.tickerid, atrTimeframe, trueRange,
+  gaps = waitForCloses ? barmerge.gaps_on : barmerge.gaps_off,
+  lookahead = waitForCloses ? barmerge.lookahead_off : barmerge.lookahead_on)
+float atrInPoints = smooth(trueRangeOnTimeFrame, barsLength, movingAverateType)
 float atrInTicks = math.round_to_mintick(atrInPoints / syminfo.mintick)
-float multipliedAtr = shouldDisplayInTicks ? math.round(atrInTicks * atrMultiplier) : atrInPoints * atrMultiplier
+float multipliedAtr = shouldDisplayInTicks ? math.ceil(atrInTicks * atrMultiplier) : atrInPoints * atrMultiplier
 
 // ————— Visuals
-plot(multipliedAtr, title = "ATR Value", color = color.new(#b71c1c, 0))
+plot(multipliedAtr, title = "ATR Value", color = RED)
