@@ -2,43 +2,60 @@
 // © waldoibarra
 
 //@version=6
-indicator("ATR In Ticks", shorttitle = "ATR Ticks")
+indicator("ATR In Ticks", shorttitle = "ATR", overlay = false)
 
 // ————— Constants
 const bool DEFAULT_DISPLAY_IN_TICKS = true
+const bool DEFAULT_WAIT_CLOSES = true
 
-const int DEFAULT_BARS_LENGTH = 14
+const int DEFAULT_PERIODS_LENGTH = 14
+const int MIN_PERIODS = 1
 
 const float DEFAULT_ATR_MULTIPLIER  = 1.0
+const float MIN_MULTIPLIER = 0.1
+const float MULTIPLIER_STEP = 0.1
 
-const color RED = #b71c1c
+const color DEFAULT_PLOT_COLOR = #b71c1c
+
+const string TITLE_PERIODS_LENGTH = "Length (Periods)"
+const string TITLE_MAT =            "Smoothing"
+const string TITLE_MULTIPLIER =     "Multiplier"
+const string TITLE_DISPLAY_TICKS =  "Display in ticks (instead of points)"
+const string TITLE_TIMEFRAME =      "Timeframe"
+const string TITLE_WAIT_CLOSES =    "Wait for timeframe closes"
 
 const string MAT_RMA = "RMA"
 const string MAT_SMA = "SMA"
 const string MAT_EMA = "EMA"
 const string MAT_WMA = "WMA"
-const string MAT_DEFAULT = MAT_RMA
+
+const string DEFAULT_MAT  = MAT_RMA
+const string DEFAULT_TF   = ""
 
 const string CALCULATION_GROUP_NAME = "CALCULATION"
 
-const string TT_MTF = "Multi-timeframe analysis (MTF); view the same indicator on a higher timeframe than the chart's to see the price action within a broader, long-term perspective."
+const string TT_MTF = "Multi-timeframe analysis (MTF); view the same indicator on a higher timeframe than the " +
+ "chart's to see the price action within a broader, long-term perspective."
 
 // ————— Inputs
-int barsLength = input.int(DEFAULT_BARS_LENGTH, title = "Length (Bars/Periods)", minval = 1)
-string movingAverateType = input.string(MAT_DEFAULT,
-  title = "Smoothing",
-  options = [MAT_RMA, MAT_SMA, MAT_EMA, MAT_WMA])
-float atrMultiplier = input.float(DEFAULT_ATR_MULTIPLIER, title = "Multiplier", minval = 0.1, step = 0.1)
-bool shouldDisplayInTicks = input.bool(DEFAULT_DISPLAY_IN_TICKS, title = "Display in ticks (instead of points)")
-string timeframe = input.timeframe("", "Timeframe", group = CALCULATION_GROUP_NAME, tooltip = TT_MTF)
-bool shouldWaitForCloses = input.bool(true, "Wait for timeframe closes", group = CALCULATION_GROUP_NAME)
+int lengthInput = input.int(DEFAULT_PERIODS_LENGTH, title = TITLE_PERIODS_LENGTH, minval = MIN_PERIODS)
+string maTypeInput = input.string(DEFAULT_MAT, title = TITLE_MAT, options = [MAT_RMA, MAT_SMA, MAT_EMA, MAT_WMA])
+float atrMultiplierInput = input.float(
+   DEFAULT_ATR_MULTIPLIER,
+   title = TITLE_MULTIPLIER,
+   minval = MIN_MULTIPLIER,
+   step = MULTIPLIER_STEP
+ )
+bool displayInTicksInput = input.bool(DEFAULT_DISPLAY_IN_TICKS, title = TITLE_DISPLAY_TICKS)
+string timeframeInput = input.timeframe(DEFAULT_TF, TITLE_TIMEFRAME, group = CALCULATION_GROUP_NAME, tooltip = TT_MTF)
+bool waitForClosesInput = input.bool(DEFAULT_WAIT_CLOSES, TITLE_WAIT_CLOSES, group = CALCULATION_GROUP_NAME)
 
 // ————— Functions
-// @function                    Computes the selected moving average smoothed value.
+// @function                    Calculates Average True Range using the specified moving average type.
 // @param movingAverateLength   The lookback period (length) for the smoothing calculation.
-// @param movingAverateType     The desired moving average type (e.g., "RMA", "EMA").
+// @param movingAverageType     The desired moving average type (e.g., "RMA", "EMA").
 // @returns                     The smoothed price value (a series).
-calculateAverageTrueRange(int movingAverateLength, string movingAverateType) =>
+calculateAverageTrueRange(int movingAverateLength, string movingAverageType) =>
     float trueRange = ta.tr(true)
 
     // Calculate all four series once outside the switch block for consistency and stability.
@@ -47,7 +64,7 @@ calculateAverageTrueRange(int movingAverateLength, string movingAverateType) =>
     float ema = ta.ema(trueRange, movingAverateLength)
     float wma = ta.wma(trueRange, movingAverateLength)
 
-    float movingAverage = switch movingAverateType
+    float movingAverage = switch movingAverageType
         MAT_RMA => rma
         MAT_SMA => sma
         MAT_EMA => ema
@@ -60,15 +77,18 @@ calculateAverageTrueRange(int movingAverateLength, string movingAverateType) =>
 
 // ————— Calculations
 string tickerId = ticker.new(syminfo.prefix, syminfo.ticker, syminfo.session)
-float atrInPoints = timeframe == ""
-  ? calculateAverageTrueRange(barsLength, movingAverateType)
-  : request.security(
-      tickerId,
-      timeframe,
-      calculateAverageTrueRange(barsLength, movingAverateType),
-      gaps = shouldWaitForCloses ? barmerge.gaps_on : barmerge.gaps_off)
+
+gapsMode = waitForClosesInput ? barmerge.gaps_on : barmerge.gaps_off
+
+float atrInPoints = timeframeInput == ""
+  ? calculateAverageTrueRange(lengthInput, maTypeInput)
+  : request.security(tickerId, timeframeInput, calculateAverageTrueRange(lengthInput, maTypeInput), gaps = gapsMode)
+
 float atrInTicks = math.round_to_mintick(atrInPoints / syminfo.mintick)
-float multipliedAtr = shouldDisplayInTicks ? math.ceil(atrInTicks * atrMultiplier) : atrInPoints * atrMultiplier
+
+float multipliedAtr = displayInTicksInput
+  ? math.ceil(atrInTicks * atrMultiplierInput)
+  : atrInPoints * atrMultiplierInput
 
 // ————— Visuals
-plot(multipliedAtr, title = "ATR Value", color = RED)
+plot(multipliedAtr, title = "ATR Value", color = DEFAULT_PLOT_COLOR)
